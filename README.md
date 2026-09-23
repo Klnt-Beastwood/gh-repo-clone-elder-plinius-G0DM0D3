@@ -8,13 +8,51 @@ This contains everything you need to run your app locally.
 
 View your app in AI Studio: https://ai.studio/apps/ba92593a-50e2-48c3-b657-51542c2896da
 
-## Run Locally
+## Run with a local model (no API key)
 
-**Prerequisites:**  Node.js
+**Prerequisites:** Node.js, and [LM Studio](https://lmstudio.ai) or another
+OpenAI-compatible runtime.
 
+1. In LM Studio: download a model, open the **Developer** tab, and click
+   **Start Server**. It listens on `http://localhost:1234` by default.
+2. Install dependencies: `npm install`
+3. Run the app: `npm run dev`
+4. Open http://localhost:3000
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+No `.env.local` is needed for the local path. On startup the app queries
+`GET /v1/models` on your runtime and lists whatever is loaded under **Local
+Runtime (No Key)** in the model picker, selecting the first one automatically.
+The sidebar shows a live status dot so you can tell whether the runtime was
+found.
+
+### Pointing at something other than LM Studio
+
+Set `LOCAL_BASE_URL` in `.env.local`:
+
+| Runtime | `LOCAL_BASE_URL` |
+| --- | --- |
+| LM Studio (default) | `http://localhost:1234/v1` |
+| Ollama | `http://localhost:11434/v1` |
+| llama.cpp (`llama-server`) | `http://localhost:8080/v1` |
+| vLLM | `http://localhost:8000/v1` |
+
+To change the system prompt without editing `server.ts`, set
+`GODMODE_SYSTEM_PROMPT` in `.env.local`.
+
+## Hosted providers (optional)
+
+The other models in the picker need keys — see [.env.example](.env.example) for
+`HUGGING_FACE_TOKEN` and `OPENROUTER_API_KEY`. Two caveats:
+
+- HF serverless inference for the listed models now routes through **paid**
+  Inference Providers, so a free account will see 402/404 on most of them.
+- Two of the hardcoded HF model ids no longer exist upstream
+  (`OBLITERATUS/Llama-3-70B-it-OBLITERATED`,
+  `failspy/Meta-Llama-3-70B-Instruct-Abliterated`) and will 404.
+
+## Note on `parseltongue.ts`
+
+The perturbation modes (Base64, ROT13, Zalgo, token splitting, byte reversal)
+encode your prompt before it is sent. Against a local model these mostly just
+degrade comprehension — a 7B model asked to decode Base64 in-context will
+usually produce noise. `Raw (None)` is the default for a reason.
