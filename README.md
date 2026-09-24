@@ -14,7 +14,7 @@ View your app in AI Studio: https://ai.studio/apps/ba92593a-50e2-48c3-b657-51542
 OpenAI-compatible runtime.
 
 1. In LM Studio: download a model, open the **Developer** tab, and click
-   **Start Server**. It listens on `http://localhost:1234` by default.
+   **Start Server**. It listens on port 1234 by default.
 2. Install dependencies: `npm install`
 3. Run the app: `npm run dev`
 4. Open http://localhost:3000
@@ -22,8 +22,15 @@ OpenAI-compatible runtime.
 No `.env.local` is needed for the local path. On startup the app queries
 `GET /v1/models` on your runtime and lists whatever is loaded under **Local
 Runtime (No Key)** in the model picker, selecting the first one automatically.
-The sidebar shows a live status dot so you can tell whether the runtime was
-found.
+Embedding models are filtered out, since they reject chat requests. The sidebar
+shows a live status dot so you can tell whether the runtime was found.
+
+> **Why `127.0.0.1` and not `localhost`?** LM Studio binds the IPv4 wildcard
+> (`0.0.0.0`) and does not listen on `[::]`. Node resolves hostnames verbatim,
+> and on Windows `localhost` typically resolves to IPv6 `::1` first — which
+> nothing is listening on. Using `localhost` there gives `ECONNREFUSED` against
+> a server that is demonstrably running. Verify yours with
+> `netstat -ano | findstr LISTENING | findstr "1234"`.
 
 ### Pointing at something other than LM Studio
 
@@ -31,10 +38,10 @@ Set `LOCAL_BASE_URL` in `.env.local`:
 
 | Runtime | `LOCAL_BASE_URL` |
 | --- | --- |
-| LM Studio (default) | `http://localhost:1234/v1` |
-| Ollama | `http://localhost:11434/v1` |
-| llama.cpp (`llama-server`) | `http://localhost:8080/v1` |
-| vLLM | `http://localhost:8000/v1` |
+| LM Studio (default) | `http://127.0.0.1:1234/v1` |
+| Ollama | `http://127.0.0.1:11434/v1` |
+| llama.cpp (`llama-server`) | `http://127.0.0.1:8080/v1` |
+| vLLM | `http://127.0.0.1:8000/v1` |
 
 To change the system prompt without editing `server.ts`, set
 `GODMODE_SYSTEM_PROMPT` in `.env.local`.

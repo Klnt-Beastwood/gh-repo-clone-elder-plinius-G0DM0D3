@@ -14,9 +14,14 @@ const HUGGING_FACE_TOKEN = process.env.HUGGING_FACE_TOKEN || '';
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
 
 // LM Studio, Ollama, llama.cpp and vLLM all speak the OpenAI chat-completions
-// protocol, so one code path covers all of them. LM Studio's default server
-// address is below; override LOCAL_BASE_URL for anything else.
-const LOCAL_BASE_URL = (process.env.LOCAL_BASE_URL || 'http://localhost:1234/v1').replace(/\/+$/, '');
+// protocol, so one code path covers all of them. Override LOCAL_BASE_URL for
+// anything other than LM Studio's default address.
+//
+// 127.0.0.1 rather than localhost on purpose: LM Studio binds the IPv4 wildcard
+// (0.0.0.0) and does not listen on [::]. Node 18+ resolves hostnames verbatim,
+// and on Windows localhost usually resolves to ::1 first, so `localhost` here
+// yields ECONNREFUSED against a server that is plainly running.
+const LOCAL_BASE_URL = (process.env.LOCAL_BASE_URL || 'http://127.0.0.1:1234/v1').replace(/\/+$/, '');
 // LM Studio does not check the key, but it requires the header to be present.
 const LOCAL_API_KEY = process.env.LOCAL_API_KEY || 'lm-studio';
 

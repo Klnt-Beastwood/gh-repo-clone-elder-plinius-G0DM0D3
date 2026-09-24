@@ -44,6 +44,16 @@ function displayName(id: string): string {
   return leaf.replace(/\.gguf$/i, '').toUpperCase();
 }
 
+/**
+ * /v1/models lists every loaded model, including embedding models, which have
+ * no chat capability and reject /v1/chat/completions outright. This app only
+ * does chat, so keep them out of the picker rather than offering a model that
+ * can only fail.
+ */
+function isChatCapable(id: string): boolean {
+  return !/(^|[-_/])(embed|embedding)/i.test(id);
+}
+
 export interface LocalModelsResult {
   models: ModelDescriptor[];
   baseUrl?: string;
@@ -59,12 +69,14 @@ export async function loadLocalModels(): Promise<LocalModelsResult> {
     const response = await fetch('/api/local-models');
     const data = await response.json();
 
-    const models: ModelDescriptor[] = (data?.models ?? []).map((id: string) => ({
-      id,
-      name: displayName(id),
-      provider: 'local' as const,
-      type: 'local' as const,
-    }));
+    const models: ModelDescriptor[] = (data?.models ?? [])
+      .filter(isChatCapable)
+      .map((id: string) => ({
+        id,
+        name: displayName(id),
+        provider: 'local' as const,
+        type: 'local' as const,
+      }));
 
     // Replace in place so already-imported references stay valid.
     LOCAL_MODELS.splice(0, LOCAL_MODELS.length, ...models);
