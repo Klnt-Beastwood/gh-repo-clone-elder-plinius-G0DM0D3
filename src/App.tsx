@@ -8,8 +8,8 @@ import {
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { cn } from './lib/utils';
-import { Message } from './types';
-import { sendMessageStream, GODMODE_MODELS, sendParallelMessages, stmRefine } from './services/aiService';
+import { Message, ModelDescriptor } from './types';
+import { sendMessageStream, GODMODE_MODELS, sendParallelMessages, stmRefine, loadLocalModels } from './services/aiService';
 import { PARSELTONGUE_TECHNIQUES, perturbate } from './lib/parseltongue';
 
 type AppMode = 'single' | 'classic' | 'ultra' | 'redteam';
@@ -34,9 +34,34 @@ export default function App() {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoice, setSelectedVoice] = useState<string>('');
   const [speakingId, setSpeakingId] = useState<string | null>(null);
+  const [localModels, setLocalModels] = useState<ModelDescriptor[]>([]);
+  const [localStatus, setLocalStatus] = useState<string>('Scanning for local runtime...');
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Discover whatever the local runtime (LM Studio, Ollama, llama.cpp, vLLM)
+  // currently has loaded, and prefer it: it needs no API key and no network.
+  useEffect(() => {
+    let cancelled = false;
+
+    loadLocalModels().then(({ models, baseUrl, error }) => {
+      if (cancelled) return;
+
+      setLocalModels(models);
+
+      if (models.length > 0) {
+        setLocalStatus(`${models.length} local model${models.length > 1 ? 's' : ''} @ ${baseUrl}`);
+        // Default to a local model so a first message works without any key.
+        setSelectedModel(models[0].id);
+        setActiveModelIds(models.slice(0, 2).map(m => m.id));
+      } else {
+        setLocalStatus(error || 'No local runtime detected');
+      }
+    });
+
+    return () => { cancelled = true; };
+  }, []);
 
   // Load Voices
   useEffect(() => {
@@ -143,8 +168,11 @@ export default function App() {
         const results = await sendParallelMessages([...messages, userMessage], activeModelIds, samplingParams);
         finalContent = results.map(r => `### 🧬 [${r.name}]\n${r.content}`).join('\n\n---\n\n');
       } else if (appMode === 'classic') {
-        // Classic: Hardcoded fast race
-        const raceModels = GODMODE_MODELS.slice(0, 3).map(m => m.id);
+        // Classic: fast race. Race local models when a local runtime is up,
+        // otherwise fall back to the hosted defaults.
+        const raceModels = (localModels.length > 0 ? localModels : GODMODE_MODELS)
+          .slice(0, 3)
+          .map(m => m.id);
         const results = await sendParallelMessages([...messages, userMessage], raceModels, samplingParams);
         finalContent = results.map(r => `### ⚡ [${r.name}]\n${r.content}`).join('\n\n---\n\n');
       } else {
@@ -159,7 +187,7 @@ export default function App() {
       // Handle STM Refinement (Output Normalization)
       if (stmEnabled && finalContent) {
         setAssistantContent(assistantMessageId, finalContent + '\n\n---\n\n*🔄 [STM_KERNEL: ANALYZING_RECONSTRUCTION...]*');
-        const refined = await stmRefine(finalContent);
+        const refined = await stmRefine(finalContent, selectedModel);
         setAssistantContent(assistantMessageId, refined);
       } else {
         setAssistantContent(assistantMessageId, finalContent);
@@ -225,6 +253,32 @@ export default function App() {
                 {multiModelEnabled ? (
                   <div className="space-y-4 max-h-[300px] overflow-y-auto border border-white/10 p-3 bg-white/5">
                     
+                    {localModels.length > 0 && (
+                      <div className="space-y-2">
+                         <div className="text-[8px] font-black uppercase text-emerald-400 tracking-widest opacity-80 border-b border-white/10 pb-1 mb-2">Local runtime</div>
+                         {localModels.map(m => (
+                          <label key={m.id} className="flex items-center gap-2 cursor-pointer group">
+                            <input
+                              type="checkbox"
+                              checked={activeModelIds.includes(m.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) setActiveModelIds([...activeModelIds, m.id]);
+                                else setActiveModelIds(activeModelIds.filter(id => id !== m.id));
+                              }}
+                              className="hidden"
+                            />
+                            <div className={cn(
+                              "w-3 h-3 border transition-all shrink-0",
+                              activeModelIds.includes(m.id) ? "bg-emerald-400 border-emerald-400" : "border-white/20 group-hover:border-emerald-400/50"
+                            )} />
+                            <span className={cn("text-[9px] font-black uppercase tracking-widest truncate", activeModelIds.includes(m.id) ? "text-emerald-400" : "text-white/40")}>
+                              {m.name}
+                            </span>
+                          </label>
+                         ))}
+                      </div>
+                    )}
+
                     <div className="space-y-2">
                        <div className="text-[8px] font-black uppercase text-[var(--fg)] tracking-widest opacity-80 border-b border-white/10 pb-1 mb-2">Obliterated models</div>
                        {GODMODE_MODELS.filter(m => m.type === 'obliterated').map(m => (
@@ -352,6 +406,15 @@ export default function App() {
               </div>
 
               <div>
+                <label className="text-[10px] uppercase tracking-widest opacity-50 mb-2 block">Local Runtime</label>
+                <div className="flex items-center gap-2 border border-white/10 py-2 px-3 bg-black">
+                  <div className={cn("w-1.5 h-1.5 rounded-full shrink-0", localModels.length > 0 ? "bg-emerald-400 animate-pulse" : "bg-white/20")} />
+                  <span className="text-[9px] uppercase tracking-widest opacity-70 truncate" title={localStatus}>{localStatus}</span>
+                </div>
+                <p className="text-[8px] opacity-40 uppercase mt-2">LM Studio / Ollama / llama.cpp — no key required</p>
+              </div>
+
+              <div>
                 <label className="text-[10px] uppercase tracking-widest opacity-50 mb-2 block">Parseltongue (Perturbation)</label>
                 <select 
                   value={parselType}
@@ -408,6 +471,13 @@ export default function App() {
               disabled={appMode === 'classic' || multiModelEnabled}
               className="bg-transparent border-none text-[10px] uppercase font-black tracking-widest outline-none cursor-pointer text-[var(--fg)]"
             >
+              {localModels.length > 0 && (
+                <optgroup label="Local Runtime (No Key)" className="bg-black text-emerald-400 font-bold">
+                  {localModels.map(m => (
+                    <option key={m.id} value={m.id} className="bg-black text-white">{m.name}</option>
+                  ))}
+                </optgroup>
+              )}
               <optgroup label="Obliterated / Uncensored" className="bg-black text-[var(--fg)] font-bold">
                 {GODMODE_MODELS.filter(m => m.type === 'obliterated').map(m => (
                   <option key={m.id} value={m.id} className="bg-black text-white">{m.name}</option>
